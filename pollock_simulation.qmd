@@ -975,9 +975,13 @@ Finally, the catch-capped HCR variant (1.45 Mt) is a stylized analogue to ecosys
 
 5. **F40% sloping HCR vs constant F**: The proxy Fmsy (F40%) with the sloping control rule yields a different catch/SSB tradeoff than the constant-F multipliers, and its mean realized F/Fmsy and outcomes shift between $h = 0.6$ and $h = 0.9$ (see @fig-f-sensitivity and @fig-f-sensitivity-points).
 
-# References
 
-# Appendix: R Session Info
+# References 
+
+::: {#refs}
+:::
+
+# Appendix: R Session Info {.unnumbered}
 
 Session information is reported below to document the computational environment used to generate the figures and tables.
 
