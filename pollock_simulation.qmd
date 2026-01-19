@@ -1,7 +1,7 @@
 ---
-title: "Bering Sea Pollock-like Population Simulation"
-subtitle: "Comparing Low and High Steepness Scenarios"
-author: "Population Dynamics Model"
+title: "Bering Sea Pollock-like Population Simulation test"
+subtitle: "Comparing Low and High Steepness Scenarios with constant HCR"
+author: "Jim Ianelli"
 date: today
 format:
   html:
@@ -12,6 +12,7 @@ format:
     number-sections: true
     lightbox: true
     embed-resources: true
+bibliography: ref.bib
 execute:
   warning: false
   message: false
@@ -37,9 +38,9 @@ The model incorporates:
 - **Age structure**: 15 age classes (ages 1-15, with age 15 as a plus group)
 - **Simulation period**: 50 years
 - **Stock-recruitment**: Beverton-Holt relationship
-- **Maturity**: Logistic ogive with 50% maturity at age 3.6 years
+- **Maturity**: Fixed at-age proportions (see table below)
 - **Fishery selectivity**: Logistic ogive with 50% selection at age 4 years
-- **Recruitment variability**: Log-normal process error with CV = 0.7
+- **Recruitment variability**: Log-normal process error with $\sigma_R$ = 0.7
 - **SSB definition**: Female spawning biomass only (assuming 50:50 sex ratio)
 
 We move from model setup to reference points in @tbl-refpoints, then visualize the biology and fishery tradeoffs in @fig-sr-comparison and @fig-yield-comparison. Simulation outcomes are summarized in @fig-single-sim and @fig-monte-carlo, with sensitivity results in @fig-f-sensitivity.
@@ -75,19 +76,21 @@ Biological inputs control growth, maturity, and vulnerability, which in turn sha
 
 ### Weight-at-Age
 
-Weight-at-age is specified empirically based on approximate EBS pollock values:
+Weight-at-age is specified empirically based on the updated schedule:
 
 | Age | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15+ |
 |-----|---|---|---|---|---|---|---|---|---|----|----|----|----|----|----|
-| Weight (kg) | 0.03 | 0.12 | 0.30 | 0.42 | 0.51 | 0.62 | 0.74 | 0.86 | 0.97 | 1.06 | 1.13 | 1.19 | 1.24 | 1.28 | 1.31 |
+| Weight (kg) | 0.029 | 0.180 | 0.372 | 0.491 | 0.613 | 0.749 | 0.883 | 1.014 | 1.133 | 1.243 | 1.348 | 1.388 | 1.469 | 1.553 | 1.791 |
 
 These weights translate numbers-at-age into biomass and catch, which are summarized in @fig-single-sim and @fig-yield-comparison.
 
 ### Maturity and Selectivity
 
-The proportion mature and fishery selectivity both follow logistic functions:
+Maturity is specified directly using fixed proportions at age, while fishery selectivity follows a logistic function:
 
-$$m_a = \frac{1}{1 + e^{-\gamma_m(a - a_{50}^m)}} \quad \text{with } a_{50}^m = 3.6$$
+| Age | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15+ |
+|-----|---|---|---|---|---|---|---|---|---|----|----|----|----|----|----|
+| Proportion mature | 0.000 | 0.008 | 0.289 | 0.641 | 0.842 | 0.901 | 0.947 | 0.963 | 0.970 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |
 
 $$s_a = \frac{1}{1 + e^{-\gamma_s(a - a_{50}^s)}} \quad \text{with } a_{50}^s = 4.0$$
 
@@ -942,6 +945,15 @@ p_var
 
 This comparison of low ($h = 0.6$) and high ($h = 0.9$) steepness scenarios demonstrates the critical influence of stock-recruitment steepness on fishery management. The main evidence comes from the reference points in @tbl-refpoints and the tradeoff patterns in @fig-sr-comparison, @fig-yield-comparison, and @fig-single-sim.
 
+## Discussion
+
+This simulation is a simplified, pollock-like evaluation of SPR-based control rules, grounded in the Tier 3 framework described in the BSAI FMP [@NPFMC_FMP_2024]. In this model, the proxy $F_{MSY}$ is $F_{40\%}$, with a sloping rule that holds $F_{40\%}$ above 0.4 $B_0$ and linearly ramps to zero at 0.05 $B_0$. That structure aligns with SPR proxy guidance and the literature on SPR-based reference points [@NPFMC_FMP_2024; @Szuwalski_Punt_2025], while remaining intentionally stylized to match the scenarios tested here.
+
+The two steepness scenarios ($h = 0.6$ and $h = 0.9$) serve as a tractable proxy for productivity shifts discussed in climate and recruitment literature [@Spencer_etal_2019; @Punt_etal_2024; @Szuwalski_etal_2023]. We do not explicitly model environmental covariates or the ACLIM framework, but those references motivate the sensitivity analysis and the interpretation of performance differences across productivity regimes [@Hollowed_etal_2020].
+
+Finally, the catch-capped HCR variant (1.45 Mt) is a stylized analogue to ecosystem-cap effects that can dampen catch variability and conserve biomass during high abundance [@Holsman_etal_2020; @Ianelli_etal_2011]. While the cap value here is illustrative and not a direct re-creation of the 2 Mt cap, the direction and intent are consistent with the cited findings, making the comparison appropriate for the simplified model context.
+
+
 ## Reference Points
 
 | Metric | h = 0.6 | h = 0.9 |
@@ -962,6 +974,8 @@ This comparison of low ($h = 0.6$) and high ($h = 0.9$) steepness scenarios demo
 4. **Management implications**: Uncertainty in steepness translates directly to uncertainty in sustainable harvest levels. A stock managed as if $h = 0.9$ when true $h = 0.6$ would be at high risk of overfishing.
 
 5. **F40% sloping HCR vs constant F**: The proxy Fmsy (F40%) with the sloping control rule yields a different catch/SSB tradeoff than the constant-F multipliers, and its mean realized F/Fmsy and outcomes shift between $h = 0.6$ and $h = 0.9$ (see @fig-f-sensitivity and @fig-f-sensitivity-points).
+
+# References
 
 # Appendix: R Session Info
 

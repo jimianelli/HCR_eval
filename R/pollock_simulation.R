@@ -27,32 +27,46 @@ set_parameters <- function() {
     # Biological parameters
     M = 0.3,                    # Natural mortality
 
-    # Empirical weight-at-age (kg) - approximate EBS pollock values
-    # Age 3 ~ 0.3 kg, Age 5 ~ 0.5 kg
+    # Empirical weight-at-age (kg)
     weight_at_age_vec = c(
-      0.030,   # Age 1
-      0.120,   # Age 2
-      0.300,   # Age 3
-      0.420,   # Age 4
-      0.510,   # Age 5
-      0.620,   # Age 6
-      0.740,   # Age 7
-      0.860,   # Age 8
-      0.970,   # Age 9
-      1.060,   # Age 10
-      1.130,   # Age 11
-      1.190,   # Age 12
-      1.240,   # Age 13
-      1.280,   # Age 14
-      1.310    # Age 15+
+      0.028664353,   # Age 1
+      0.179556496,   # Age 2
+      0.371928063,   # Age 3
+      0.491302938,   # Age 4
+      0.613339000,   # Age 5
+      0.749083313,   # Age 6
+      0.883110688,   # Age 7
+      1.013851875,   # Age 8
+      1.132731875,   # Age 9
+      1.243061438,   # Age 10
+      1.347911625,   # Age 11
+      1.388225625,   # Age 12
+      1.468646938,   # Age 13
+      1.552769000,   # Age 14
+      1.790591875    # Age 15+
     ),
 
     # Sex ratio for SSB calculation (proportion female)
     prop_female = 0.5,
 
-    # Maturity ogive (logistic) - for females
-    mat_a50 = 3.6,              # Age at 50% maturity
-    mat_slope = 2.5,            # Slope parameter
+    # Maturity at age (females)
+    maturity_at_age_vec = c(
+      0.000,  # Age 1
+      0.008,  # Age 2
+      0.289,  # Age 3
+      0.641,  # Age 4
+      0.842,  # Age 5
+      0.901,  # Age 6
+      0.947,  # Age 7
+      0.963,  # Age 8
+      0.970,  # Age 9
+      1.000,  # Age 10
+      1.000,  # Age 11
+      1.000,  # Age 12
+      1.000,  # Age 13
+      1.000,  # Age 14
+      1.000   # Age 15+
+    ),
 
     # Selectivity ogive (logistic)
     sel_a50 = 4.0,              # Age at 50% selectivity
@@ -92,6 +106,10 @@ weight_at_age <- function(age, params) {
 #' @param params Parameter list
 #' @return Vector of maturity proportions
 maturity_at_age <- function(age, params) {
+  if (!is.null(params$maturity_at_age_vec)) {
+    return(params$maturity_at_age_vec[age])
+  }
+
   1 / (1 + exp(-params$mat_slope * (age - params$mat_a50)))
 }
 
