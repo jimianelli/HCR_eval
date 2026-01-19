@@ -27,23 +27,19 @@ library(ggthemes)
 ```
 
 # Introduction
+Recruitment productivity under climate change is uncertain, and stock-recruitment steepness ($h$) is a key parameter that drives sustainable harvest levels. Evidence from climate-ecosystem modeling and recruitment studies suggests steepness and productivity can shift with warming and prey dynamics [@Hollowed_etal_2020; @Holsman_etal_2020; @Spencer_etal_2019; @Szuwalski_etal_2023]. Because steepness informs reference points and F proxies, mis-specification can change expected yields and risk profiles [@Szuwalski_Punt_2025; @Punt_etal_2024].
 
-This document describes an age-structured population simulation for a Bering Sea pollock-like species, comparing **two scenarios** with different stock-recruitment steepness values:
+At the same time, there is pressure to incorporate environmental covariates into harvest control rules (HCRs) to improve adaptability. These approaches can help track productivity changes, but they also add interpretive uncertainty and require strong validation [@Punt_etal_2024; @Szuwalski_etal_2023]. In contrast, tier-based HCRs remain transparent and easier to communicate, with clear links from biomass to fishing mortality [@NPFMC_FMP_2024]. This study asks whether a simple, transparent HCR can be robust to plausible productivity shifts without relying on covariates.
 
-- **Scenario 1**: Low steepness ($h = 0.6$) - representing a less productive stock
-- **Scenario 2**: High steepness ($h = 0.9$) - representing a more productive stock
+We use a stylized pollock-like, age-structured model and compare two steepness scenarios (h=0.6 and h=0.9) [@NPFMC_FMP_2024]. The HCR is held constant (F40% SPR with a biomass ramp from 0.4$B_0$ to 0.05$B_0$), consistent with the Tier 3 framework used for Bering Sea groundfish [@NPFMC_FMP_2024; @Ianelli_etal_2011]. The goal is to evaluate whether a single rule performs reasonably across both low and high productivity regimes, and to quantify the tradeoffs if productivity assumptions are wrong [@Szuwalski_Punt_2025].
 
-The model incorporates:
+Key design choices include:
+- 15 age classes with Bering Sea-like growth and maturity schedules [@Ianelli_etal_2011]
+- Beverton-Holt recruitment with lognormal variability (CV 0.7) [@Spencer_etal_2019]
+- 50-year projections with 100 Monte Carlo replicates per scenario
+- No explicit environmental covariates; steepness shifts serve as a reduced-form proxy for climate-driven productivity changes [@Hollowed_etal_2020; @Holsman_etal_2020]
 
-- **Age structure**: 15 age classes (ages 1-15, with age 15 as a plus group)
-- **Simulation period**: 50 years
-- **Stock-recruitment**: Beverton-Holt relationship
-- **Maturity**: Fixed at-age proportions (see table below)
-- **Fishery selectivity**: Logistic ogive with 50% selection at age 4 years
-- **Recruitment variability**: Log-normal process error with $\sigma_R$ = 0.7
-- **SSB definition**: Female spawning biomass only (assuming 50:50 sex ratio)
-
-We move from model setup to reference points in @tbl-refpoints, then visualize the biology and fishery tradeoffs in @fig-sr-comparison and @fig-yield-comparison. Simulation outcomes are summarized in @fig-single-sim and @fig-monte-carlo, with sensitivity results in @fig-f-sensitivity.
+Outputs include reference points, time series of biomass and catch, and sensitivity comparisons across steepness values. We move from model setup to reference points in @tbl-refpoints, then visualize recruitment and yield tradeoffs in @fig-sr-comparison and @fig-yield-comparison. Simulation outcomes are summarized in @fig-single-sim and @fig-monte-carlo, with sensitivity results in @fig-f-sensitivity, similar to HCR robustness evaluations in recent studies [@Punt_etal_2024].
 
 # Model Description
 
