@@ -445,6 +445,116 @@ p_mc <- ggplot(ssb_df, aes(x = Year, y = SSB, group = interaction(Scenario, Sim)
 p_mc
 ```
 
+```{r catch-monte-carlo}
+#| label: fig-catch-monte-carlo
+#| fig-cap: "Ensemble of 100 simulations for each scenario showing catch variability under constant F and the FSPR HCR. Thin lines are individual simulations and thick solid lines are medians."
+#| fig-height: 5
+#| fig-width: 10
+
+catch_low_hcr <- matrix(NA, n_years, n_sims)
+catch_high_hcr <- matrix(NA, n_years, n_sims)
+
+for (i in 1:n_sims) {
+  sim_l_hcr <- run_simulation_hcr(
+    scenario_low$params,
+    F_target = F40_low,
+    B0 = ref_low$SSB0,
+    catch_cap = NULL,
+    seed = 2000 + i
+  )
+  sim_h_hcr <- run_simulation_hcr(
+    scenario_high$params,
+    F_target = F40_high,
+    B0 = ref_high$SSB0,
+    catch_cap = NULL,
+    seed = 3000 + i
+  )
+  catch_low_hcr[, i] <- sim_l_hcr$Catch
+  catch_high_hcr[, i] <- sim_h_hcr$Catch
+}
+
+catch_low_df <- data.frame(
+  Year = rep(1:n_years, times = n_sims),
+  Sim = rep(1:n_sims, each = n_years),
+  Catch = as.vector(catch_low) / 1e9,
+  Scenario = "h=0.6",
+  Policy = "Constant F"
+)
+
+catch_high_df <- data.frame(
+  Year = rep(1:n_years, times = n_sims),
+  Sim = rep(1:n_sims, each = n_years),
+  Catch = as.vector(catch_high) / 1e9,
+  Scenario = "h=0.9",
+  Policy = "Constant F"
+)
+
+catch_low_hcr_df <- data.frame(
+  Year = rep(1:n_years, times = n_sims),
+  Sim = rep(1:n_sims, each = n_years),
+  Catch = as.vector(catch_low_hcr) / 1e9,
+  Scenario = "h=0.6",
+  Policy = "FSPR HCR"
+)
+
+catch_high_hcr_df <- data.frame(
+  Year = rep(1:n_years, times = n_sims),
+  Sim = rep(1:n_sims, each = n_years),
+  Catch = as.vector(catch_high_hcr) / 1e9,
+  Scenario = "h=0.9",
+  Policy = "FSPR HCR"
+)
+
+catch_df <- rbind(catch_low_df, catch_high_df, catch_low_hcr_df, catch_high_hcr_df)
+
+median_catch_df <- rbind(
+  data.frame(
+    Year = 1:n_years,
+    Catch = apply(catch_low, 1, median) / 1e9,
+    Scenario = "h=0.6",
+    Policy = "Constant F"
+  ),
+  data.frame(
+    Year = 1:n_years,
+    Catch = apply(catch_high, 1, median) / 1e9,
+    Scenario = "h=0.9",
+    Policy = "Constant F"
+  ),
+  data.frame(
+    Year = 1:n_years,
+    Catch = apply(catch_low_hcr, 1, median) / 1e9,
+    Scenario = "h=0.6",
+    Policy = "FSPR HCR"
+  ),
+  data.frame(
+    Year = 1:n_years,
+    Catch = apply(catch_high_hcr, 1, median) / 1e9,
+    Scenario = "h=0.9",
+    Policy = "FSPR HCR"
+  )
+)
+
+policy_colors <- c("Constant F" = "#1F77B4", "FSPR HCR" = "#D95F02")
+
+p_catch <- ggplot(
+  catch_df,
+  aes(x = Year, y = Catch, group = interaction(Scenario, Policy, Sim), color = Policy)
+) +
+  geom_line(alpha = 0.08, size = 0.4, show.legend = FALSE) +
+  geom_line(
+    data = median_catch_df,
+    aes(x = Year, y = Catch, color = Policy),
+    size = 1.1,
+    inherit.aes = FALSE
+  ) +
+  facet_wrap(~ Scenario, ncol = 2) +
+  scale_color_manual(values = policy_colors) +
+  labs(x = "Year", y = "Catch (Mt)", title = "Monte Carlo catch trajectories") +
+  ggthemes::theme_few()
+
+p_catch
+```
+
 ```{r mc-stats}
 #| label: tbl-mc-stats
 #| tbl-cap: "Monte Carlo simulation statistics (100 runs per scenario)"
