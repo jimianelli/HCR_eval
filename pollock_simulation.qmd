@@ -1193,6 +1193,7 @@ Illustrative triggers that could be implemented within the capped HCR framework 
 - **Trend trigger**: if SSB declines for 4 of 5 consecutive years, lower the cap and reduce the ramp slope until SSB recovers above the threshold.
 - **Catch variability trigger**: if catch CV exceeds a policy limit, temporarily tighten the cap or reduce the $F_{40\%}$ target.
 - **Recruitment anomaly trigger**: if recruitment falls below a historical percentile for multiple years, tighten the ramp parameters while maintaining the cap.
+- **Prolonged low recruitment trigger**: if recruitment is below its long-term mean for 5 consecutive years, reduce the $F_{40\%}$ target and lower the cap until recruitment rebounds.
 
 These triggers can be evaluated by their false-alarm rate, time-to-recovery, and tradeoffs against yield, allowing the Council to align management actions with explicit objectives rather than relying on implicit assumptions about productivity.
 
@@ -1204,6 +1205,7 @@ These triggers can be evaluated by their false-alarm rate, time-to-recovery, and
 | Persistent decline | SSB trend | Declines in 4 of 5 years | Lower cap by 15% and steepen the ramp |
 | Catch instability | Catch CV (last 10 years) | > 0.30 | Temporarily tighten cap by 10% |
 | Recruitment anomaly | Recruitment percentile | < 20th percentile for 3 of 5 years | Reduce $F_{40\%}$ by 15% and tighten ramp |
+| Prolonged low recruitment | Recruitment vs mean | Below mean for 5 consecutive years | Reduce $F_{40\%}$ by 10% and lower cap by 10% |
 
 
 ## Reference Points
