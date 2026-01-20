@@ -69,6 +69,8 @@ At the same time, there is pressure to incorporate environmental covariates into
 
 We use a stylized pollock-like, age-structured model and compare two steepness scenarios (h=0.6 and h=0.9) [@NPFMC_FMP_2024]. The HCR is held constant (F40% SPR with a biomass ramp from 0.4$B_0$ to 0.05$B_0$), consistent with the Tier 3 framework used for Bering Sea groundfish [@NPFMC_FMP_2024; @Ianelli_etal_2011]. The goal is to evaluate whether a single rule performs reasonably across both low and high productivity regimes, and to quantify the tradeoffs if productivity assumptions are wrong [@Szuwalski_Punt_2025].
 
+This two-scenario comparison also frames a plausible climate-driven trajectory: productivity could shift over time from a high-steepness regime to a low-steepness regime (or vice versa) as environmental conditions change. Interpreting the scenarios as endpoints of a time-varying process clarifies the management problem: the HCR is calibrated under one regime but must remain acceptable if the system transitions to the other. The results therefore inform both static mis-specification risk and the dynamic case of a climate-driven regime shift.
+
 Key design choices include:
 - 15 age classes with Bering Sea-like growth and maturity schedules [@Ianelli_etal_2011]
 - Beverton-Holt recruitment with lognormal variability (CV 0.7) [@Spencer_etal_2019]
@@ -1177,7 +1179,7 @@ Finally, the catch-capped HCR variant (1.45 Mt) is a stylized analogue to ecosys
 
 ## Management Triggers and Objectives
 
-This analysis can be extended to explicitly test management objectives and triggers. Objectives define the desired outcomes and can be evaluated directly with the performance metrics already computed here (mean catch, catch variability, and risk of low biomass). Triggers then specify when management should shift from the baseline HCR to an alternative policy (e.g., a lower F target, a cap, or a more conservative ramp).
+This analysis can be extended to explicitly test management objectives and triggers. Objectives define the desired outcomes and can be evaluated directly with the performance metrics already computed here (mean catch, catch variability, and risk of low biomass). Triggers then specify when the baseline capped HCR should tighten or relax specific elements of the rule (e.g., a lower F target, a smaller cap, or a steeper ramp).
 
 Examples of objectives that map cleanly onto the current outputs include:
 
@@ -1185,14 +1187,23 @@ Examples of objectives that map cleanly onto the current outputs include:
 - Maintain catch stability: limit catch CV over the last 10 years (see @fig-catch-variability).
 - Maintain yield: keep mean catch above a target while satisfying the risk and stability bounds.
 
-Illustrative triggers that could be implemented in this simulation framework include:
+Illustrative triggers that could be implemented within the capped HCR framework include:
 
 - **Biomass trigger**: if a 3-year moving average of $SSB/B_{MSY}$ falls below 1.0, reduce $F_{40\%}$ by a fixed fraction for the next 5 years.
-- **Trend trigger**: if SSB declines for 4 of 5 consecutive years, switch to the capped HCR until SSB recovers above the threshold.
-- **Catch variability trigger**: if catch CV exceeds a policy limit, activate the catch cap or a lower $F$ target.
-- **Recruitment anomaly trigger**: if recruitment falls below a historical percentile for multiple years, tighten the ramp parameters.
+- **Trend trigger**: if SSB declines for 4 of 5 consecutive years, lower the cap and reduce the ramp slope until SSB recovers above the threshold.
+- **Catch variability trigger**: if catch CV exceeds a policy limit, temporarily tighten the cap or reduce the $F_{40\%}$ target.
+- **Recruitment anomaly trigger**: if recruitment falls below a historical percentile for multiple years, tighten the ramp parameters while maintaining the cap.
 
 These triggers can be evaluated by their false-alarm rate, time-to-recovery, and tradeoffs against yield, allowing the Council to align management actions with explicit objectives rather than relying on implicit assumptions about productivity.
+
+**Illustrative trigger table (capped HCR adjustments):**
+
+| Trigger | Metric | Threshold | Capped HCR adjustment |
+|---|---|---|---|
+| Biomass safeguard | 3-year mean $SSB/B_{MSY}$ | < 1.0 | Reduce $F_{40\%}$ target by 20% for 5 years |
+| Persistent decline | SSB trend | Declines in 4 of 5 years | Lower cap by 15% and steepen the ramp |
+| Catch instability | Catch CV (last 10 years) | > 0.30 | Temporarily tighten cap by 10% |
+| Recruitment anomaly | Recruitment percentile | < 20th percentile for 3 of 5 years | Reduce $F_{40\%}$ by 15% and tighten ramp |
 
 
 ## Reference Points
