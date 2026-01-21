@@ -551,6 +551,131 @@ run_simulation <- function(params, F_series = NULL, seed = NULL, init_F = NULL) 
   return(results)
 }
 
+#' Run population simulation with time-varying steepness and specified F series
+#' @param params Parameter list
+#' @param h_series Vector of steepness values by year (length >= n_years)
+#' @param F_series Vector of F values for each year (or single value)
+#' @param seed Random seed for reproducibility
+#' @param init_F Fishing mortality used to set the initial equilibrium
+#' @return List with simulation results
+run_simulation_variable_h <- function(params,
+                                      h_series,
+                                      F_series = NULL,
+                                      seed = NULL,
+                                      init_F = NULL) {
+
+  if (!is.null(seed)) set.seed(seed)
+
+  n_years <- params$n_years
+  n_ages <- params$n_ages
+
+  if (length(h_series) < n_years) {
+    stop("h_series must have length >= n_years")
+  }
+
+  # Default F series if not provided
+  if (is.null(F_series)) {
+    F_series <- rep(params$F_init, n_years)
+  } else if (length(F_series) == 1) {
+    F_series <- rep(F_series, n_years)
+  } else if (length(F_series) < n_years) {
+    stop("F_series must have length >= n_years")
+  }
+
+  beverton_holt_h <- function(SSB, params, SSB0, h) {
+    R0 <- params$R0
+    alpha <- (4 * h * R0) / (SSB0 * (1 - h))
+    beta <- (5 * h - 1) / (SSB0 * (1 - h))
+    (alpha * SSB) / (1 + beta * SSB)
+  }
+
+  # Pre-calculate biological parameters
+  wt <- weight_at_age(params$ages, params)
+  mat <- maturity_at_age(params$ages, params)
+  sel <- selectivity_at_age(params$ages, params)
+  SSB0 <- calc_SSB0(params)
+
+  # Storage matrices
+  N <- matrix(0, nrow = n_ages, ncol = n_years)
+  SSB <- numeric(n_years)
+  Recruitment <- numeric(n_years)
+  Catch <- numeric(n_years)
+
+  if (is.null(init_F)) {
+    if (!is.null(params$Fmsy)) {
+      init_F <- params$Fmsy
+    } else {
+      init_F <- calc_reference_points(params)$Fmsy
+    }
+  }
+
+  # Initialize population at fished equilibrium (Fmsy by default)
+  N[, 1] <- init_population(params, init_F)
+  SSB[1] <- calc_ssb(N[, 1], params)
+  Recruitment[1] <- N[1, 1]
+
+  # Calculate catch in year 1
+  F1 <- F_series[1]
+  catch_year1 <- 0
+  for (a in 1:n_ages) {
+    Z <- params$M + F1 * sel[a]
+    catch_year1 <- catch_year1 + N[a, 1] * wt[a] * (F1 * sel[a] / Z) * (1 - exp(-Z))
+  }
+  Catch[1] <- catch_year1
+
+  # Run simulation
+  for (t in 2:n_years) {
+    F_t <- F_series[t]
+
+    # Calculate recruitment from SSB in previous year with time-varying h
+    h_t <- h_series[t]
+    R_det <- beverton_holt_h(SSB[t - 1], params, SSB0, h_t)
+    R_t <- add_recruitment_error(R_det, params)
+    Recruitment[t] <- R_t
+    N[1, t] <- R_t
+
+    # Survival for ages 2 to n_ages-1
+    for (a in 2:(n_ages - 1)) {
+      Z <- params$M + F_series[t - 1] * sel[a - 1]
+      N[a, t] <- N[a - 1, t - 1] * exp(-Z)
+    }
+
+    # Plus group
+    Z_last <- params$M + F_series[t - 1] * sel[n_ages - 1]
+    Z_plus <- params$M + F_series[t - 1] * sel[n_ages]
+    N[n_ages, t] <- N[n_ages - 1, t - 1] * exp(-Z_last) +
+                    N[n_ages, t - 1] * exp(-Z_plus)
+
+    # Calculate SSB (females only)
+    SSB[t] <- calc_ssb(N[, t], params)
+
+    # Calculate catch (Baranov equation)
+    catch_t <- 0
+    for (a in 1:n_ages) {
+      Z <- params$M + F_t * sel[a]
+      catch_t <- catch_t + N[a, t] * wt[a] * (F_t * sel[a] / Z) * (1 - exp(-Z))
+    }
+    Catch[t] <- catch_t
+  }
+
+  results <- list(
+    N = N,
+    SSB = SSB,
+    Recruitment = Recruitment,
+    Catch = Catch,
+    F = F_series,
+    years = 1:n_years,
+    ages = params$ages,
+    params = params,
+    SSB0 = SSB0,
+    weight = wt,
+    maturity = mat,
+    selectivity = sel
+  )
+
+  return(results)
+}
+
 #' Run population simulation with a sloping HCR based on SSB
 #' @param params Parameter list
 #' @param F_target Target fishing mortality (e.g., F40%)
@@ -626,6 +751,148 @@ run_simulation_hcr <- function(params,
 
     # Calculate recruitment from SSB in previous year
     R_det <- beverton_holt(SSB[t - 1], params, SSB0)
+    R_t <- add_recruitment_error(R_det, params)
+    Recruitment[t] <- R_t
+    N[1, t] <- R_t
+
+    # Survival for ages 2 to n_ages-1
+    for (a in 2:(n_ages - 1)) {
+      Z <- params$M + F_year[t - 1] * sel[a - 1]
+      N[a, t] <- N[a - 1, t - 1] * exp(-Z)
+    }
+
+    # Plus group
+    Z_last <- params$M + F_year[t - 1] * sel[n_ages - 1]
+    Z_plus <- params$M + F_year[t - 1] * sel[n_ages]
+    N[n_ages, t] <- N[n_ages - 1, t - 1] * exp(-Z_last) +
+                    N[n_ages, t - 1] * exp(-Z_plus)
+
+    # Calculate SSB (females only)
+    SSB[t] <- calc_ssb(N[, t], params)
+
+    if (!is.null(catch_cap)) {
+      F_cap <- calc_F_for_catch_cap(N[, t], params, catch_cap)
+      F_year[t] <- min(F_base, F_cap)
+    } else {
+      F_year[t] <- F_base
+    }
+
+    # Calculate catch (Baranov equation)
+    catch_t <- 0
+    for (a in 1:n_ages) {
+      Z <- params$M + F_year[t] * sel[a]
+      catch_t <- catch_t + N[a, t] * wt[a] * (F_year[t] * sel[a] / Z) * (1 - exp(-Z))
+    }
+    Catch[t] <- catch_t
+  }
+
+  results <- list(
+    N = N,
+    SSB = SSB,
+    Recruitment = Recruitment,
+    Catch = Catch,
+    F = F_year,
+    years = 1:n_years,
+    ages = params$ages,
+    params = params,
+    SSB0 = SSB0,
+    weight = wt,
+    maturity = mat,
+    selectivity = sel
+  )
+
+  return(results)
+}
+
+#' Run population simulation with a sloping HCR and time-varying steepness
+#' @param params Parameter list
+#' @param h_series Vector of steepness values by year (length >= n_years)
+#' @param F_target Target fishing mortality (e.g., F40%)
+#' @param B0 Unfished spawning biomass
+#' @param catch_cap Catch cap (biomass) applied to annual catch
+#' @param b_trigger_frac Biomass fraction where F is F_target
+#' @param b_min_frac Biomass fraction where F is zero
+#' @param seed Random seed for reproducibility
+#' @param init_F Fishing mortality used to set the initial equilibrium
+#' @return List with simulation results
+run_simulation_hcr_variable_h <- function(params,
+                                          h_series,
+                                          F_target,
+                                          B0,
+                                          catch_cap = NULL,
+                                          b_trigger_frac = 0.4,
+                                          b_min_frac = 0.05,
+                                          seed = NULL,
+                                          init_F = NULL) {
+
+  if (!is.null(seed)) set.seed(seed)
+
+  n_years <- params$n_years
+  n_ages <- params$n_ages
+
+  if (length(h_series) < n_years) {
+    stop("h_series must have length >= n_years")
+  }
+
+  beverton_holt_h <- function(SSB, params, SSB0, h) {
+    R0 <- params$R0
+    alpha <- (4 * h * R0) / (SSB0 * (1 - h))
+    beta <- (5 * h - 1) / (SSB0 * (1 - h))
+    (alpha * SSB) / (1 + beta * SSB)
+  }
+
+  # Pre-calculate biological parameters
+  wt <- weight_at_age(params$ages, params)
+  mat <- maturity_at_age(params$ages, params)
+  sel <- selectivity_at_age(params$ages, params)
+  SSB0 <- calc_SSB0(params)
+
+  if (is.null(init_F)) {
+    if (!is.null(params$Fmsy)) {
+      init_F <- params$Fmsy
+    } else {
+      init_F <- calc_reference_points(params)$Fmsy
+    }
+  }
+
+  # Storage matrices
+  N <- matrix(0, nrow = n_ages, ncol = n_years)
+  SSB <- numeric(n_years)
+  Recruitment <- numeric(n_years)
+  Catch <- numeric(n_years)
+  F_year <- numeric(n_years)
+
+  # Initialize population at fished equilibrium (Fmsy by default)
+  N[, 1] <- init_population(params, init_F)
+  SSB[1] <- calc_ssb(N[, 1], params)
+  Recruitment[1] <- N[1, 1]
+
+  # Fishing mortality in year 1 from HCR (apply catch cap if provided)
+  F_base <- calc_sloping_hcr(SSB[1], B0, F_target, b_trigger_frac, b_min_frac)
+  if (!is.null(catch_cap)) {
+    F_cap <- calc_F_for_catch_cap(N[, 1], params, catch_cap)
+    F_year[1] <- min(F_base, F_cap)
+  } else {
+    F_year[1] <- F_base
+  }
+
+  # Calculate catch in year 1
+  F1 <- F_year[1]
+  catch_year1 <- 0
+  for (a in 1:n_ages) {
+    Z <- params$M + F1 * sel[a]
+    catch_year1 <- catch_year1 + N[a, 1] * wt[a] * (F1 * sel[a] / Z) * (1 - exp(-Z))
+  }
+  Catch[1] <- catch_year1
+
+  # Run simulation
+  for (t in 2:n_years) {
+    # Base F is set from previous-year SSB
+    F_base <- calc_sloping_hcr(SSB[t - 1], B0, F_target, b_trigger_frac, b_min_frac)
+
+    # Calculate recruitment from SSB in previous year with time-varying h
+    h_t <- h_series[t]
+    R_det <- beverton_holt_h(SSB[t - 1], params, SSB0, h_t)
     R_t <- add_recruitment_error(R_det, params)
     Recruitment[t] <- R_t
     N[1, t] <- R_t

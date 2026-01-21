@@ -55,6 +55,7 @@ execute:
 
 ```{r setup}
 #| include: false
+#| cache: false
 SOURCED_ONLY <- TRUE
 source("R/pollock_simulation.R")
 library(ggplot2)
@@ -1167,6 +1168,196 @@ p_var <- ggplot(var_summary, aes(x = Mean_Catch_Mt, y = Catch_CV, color = Scenar
 
 p_var
 ```
+
+# Alternating Steepness Simulation
+
+## Base-recruitment variability
+
+To represent a climate-driven regime shift, we run a separate simulation where steepness alternates between high and low values every 10 years. The capped SPR HCR (F40% with a 1.45 Mt catch cap) is applied throughout, and we summarize productivity using log(recruitment/SSB) for each simulation run.
+
+```{r alternating-steepness}
+#| label: fig-alt-log-rps
+#| fig-cap: "Log(recruitment/SSB) time series across 100 simulations with steepness alternating every 10 years. Recruitment in year t is based on SSB in year t-1."
+#| fig-height: 5
+#| fig-width: 10
+
+n_years_alt <- scenario_low$params$n_years
+block_years <- 10
+block_id <- rep(seq_len(ceiling(n_years_alt / block_years)), each = block_years)[1:n_years_alt]
+h_series <- ifelse(block_id %% 2 == 1, scenario_high$params$h, scenario_low$params$h)
+
+n_sims_alt <- 100
+catch_cap_alt <- 1.45e9
+F_target_alt <- calc_F_spr(scenario_low$params, spr_target = 0.4)
+B0_alt <- calc_SSB0(scenario_low$params)
+
+log_rps_list <- vector("list", n_sims_alt)
+
+for (i in 1:n_sims_alt) {
+  sim_alt <- run_simulation_hcr_variable_h(
+    scenario_low$params,
+    h_series = h_series,
+    F_target = F_target_alt,
+    B0 = B0_alt,
+    catch_cap = catch_cap_alt,
+    seed = 4000 + i
+  )
+
+  rps <- sim_alt$Recruitment[-1] / pmax(sim_alt$SSB[-length(sim_alt$SSB)], 1e-12)
+  log_rps_list[[i]] <- data.frame(
+    Year = 2:n_years_alt,
+    Sim = i,
+    Log_R_SSB = log(rps)
+  )
+}
+
+log_rps_df <- do.call(rbind, log_rps_list)
+
+median_log_rps <- aggregate(Log_R_SSB ~ Year, data = log_rps_df, FUN = median)
+
+p_alt <- ggplot(log_rps_df, aes(x = Year, y = Log_R_SSB, group = Sim)) +
+  geom_line(alpha = 0.2, size = 0.4, color = "steelblue") +
+  geom_line(
+    data = median_log_rps,
+    aes(x = Year, y = Log_R_SSB),
+    inherit.aes = FALSE,
+    color = "black",
+    size = 1.1
+  ) +
+  labs(x = "Year", y = "log(Recruitment / SSB)", title = "Alternating steepness (10-year blocks)") +
+  ggthemes::theme_few()
+
+p_alt
+```
+
+## Alternating Steepness with Low Recruitment Variability
+
+We repeat the alternating-steepness experiment with low recruitment variability ($\sigma_R = 0.1$) to show how reduced process error changes the log(recruitment/SSB) dynamics under the capped HCR.
+
+```{r alternating-steepness-low-sigma}
+#| label: fig-alt-log-rps-low-sigma
+#| fig-cap: "Log(recruitment/SSB) time series across 100 simulations with steepness alternating every 10 years and low recruitment variability (sigma_R = 0.1). Recruitment in year t is based on SSB in year t-1."
+#| fig-height: 5
+#| fig-width: 10
+
+n_years_alt_low <- scenario_low$params$n_years
+block_years_low <- 10
+block_id_low <- rep(seq_len(ceiling(n_years_alt_low / block_years_low)), each = block_years_low)[1:n_years_alt_low]
+h_series_low <- ifelse(block_id_low %% 2 == 1, scenario_high$params$h, scenario_low$params$h)
+
+params_low_sigma <- scenario_low$params
+params_low_sigma$rec_sigma <- 0.1
+params_low_sigma$rec_cv <- sqrt(exp(params_low_sigma$rec_sigma^2) - 1)
+
+n_sims_alt_low <- 100
+catch_cap_alt_low <- 1.45e9
+F_target_alt_low <- calc_F_spr(params_low_sigma, spr_target = 0.4)
+B0_alt_low <- calc_SSB0(params_low_sigma)
+
+log_rps_list_low <- vector("list", n_sims_alt_low)
+
+for (i in 1:n_sims_alt_low) {
+  sim_alt_low <- run_simulation_hcr_variable_h(
+    params_low_sigma,
+    h_series = h_series_low,
+    F_target = F_target_alt_low,
+    B0 = B0_alt_low,
+    catch_cap = catch_cap_alt_low,
+    seed = 5000 + i
+  )
+
+  rps_low <- sim_alt_low$Recruitment[-1] / pmax(sim_alt_low$SSB[-length(sim_alt_low$SSB)], 1e-12)
+  log_rps_list_low[[i]] <- data.frame(
+    Year = 2:n_years_alt_low,
+    Sim = i,
+    Log_R_SSB = log(rps_low)
+  )
+}
+
+log_rps_low_df <- do.call(rbind, log_rps_list_low)
+
+median_log_rps_low <- aggregate(Log_R_SSB ~ Year, data = log_rps_low_df, FUN = median)
+
+p_alt_low <- ggplot(log_rps_low_df, aes(x = Year, y = Log_R_SSB, group = Sim)) +
+  geom_line(alpha = 0.2, size = 0.4, color = "steelblue") +
+  geom_line(
+    data = median_log_rps_low,
+    aes(x = Year, y = Log_R_SSB),
+    inherit.aes = FALSE,
+    color = "black",
+    size = 1.1
+  ) +
+  labs(
+    x = "Year",
+    y = "log(Recruitment / SSB)",
+    title = "Alternating steepness (10-year blocks), sigma_R = 0.1"
+  ) +
+  ggthemes::theme_few()
+
+p_alt_low
+```
+
+### Alternating Steepness with Regime-Specific Fmsy
+
+As a contrast to the capped HCR, we apply the "correct" $F_{MSY}$ for each steepness block (high or low) while keeping $\sigma_R = 0.1$.
+
+```{r alternating-steepness-low-sigma-fmsy}
+#| label: fig-alt-log-rps-low-sigma-fmsy
+#| fig-cap: "Log(recruitment/SSB) time series with steepness alternating every 10 years and regime-specific Fmsy (sigma_R = 0.1). Recruitment in year t is based on SSB in year t-1."
+#| fig-height: 5
+#| fig-width: 10
+
+params_low_sigma_low <- params_low_sigma
+params_low_sigma_low$h <- scenario_low$params$h
+params_low_sigma_high <- params_low_sigma
+params_low_sigma_high$h <- scenario_high$params$h
+
+Fmsy_low_sigma <- calc_reference_points(params_low_sigma_low)$Fmsy
+Fmsy_high_sigma <- calc_reference_points(params_low_sigma_high)$Fmsy
+
+F_series_alt <- ifelse(block_id_low %% 2 == 1, Fmsy_high_sigma, Fmsy_low_sigma)
+
+log_rps_list_fmsy <- vector("list", n_sims_alt_low)
+
+for (i in 1:n_sims_alt_low) {
+  sim_alt_fmsy <- run_simulation_variable_h(
+    params_low_sigma,
+    h_series = h_series_low,
+    F_series = F_series_alt,
+    seed = 6000 + i
+  )
+
+  rps_fmsy <- sim_alt_fmsy$Recruitment[-1] / pmax(sim_alt_fmsy$SSB[-length(sim_alt_fmsy$SSB)], 1e-12)
+  log_rps_list_fmsy[[i]] <- data.frame(
+    Year = 2:n_years_alt_low,
+    Sim = i,
+    Log_R_SSB = log(rps_fmsy)
+  )
+}
+
+log_rps_fmsy_df <- do.call(rbind, log_rps_list_fmsy)
+median_log_rps_fmsy <- aggregate(Log_R_SSB ~ Year, data = log_rps_fmsy_df, FUN = median)
+
+p_alt_fmsy <- ggplot(log_rps_fmsy_df, aes(x = Year, y = Log_R_SSB, group = Sim)) +
+  geom_line(alpha = 0.2, size = 0.4, color = "steelblue") +
+  geom_line(
+    data = median_log_rps_fmsy,
+    aes(x = Year, y = Log_R_SSB),
+    inherit.aes = FALSE,
+    color = "black",
+    size = 1.1
+  ) +
+  labs(
+    x = "Year",
+    y = "log(Recruitment / SSB)",
+    title = "Alternating steepness, regime-specific Fmsy (sigma_R = 0.1)"
+  ) +
+  ggthemes::theme_few()
+
+p_alt_fmsy
+```
+
+Even with a known alternation in steepness, detecting a productivity shift in practice can be difficult. Recruitment variability, observation error in SSB, and the lagged relationship between SSB and recruitment can mask regime changes, especially over short time windows. This makes it challenging to distinguish a true shift in productivity from stochastic swings, and underscores the value of trigger rules that rely on sustained signals rather than single-year anomalies.
 
 # Discussion
 
