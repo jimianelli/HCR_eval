@@ -317,6 +317,105 @@ p_hcr <- ggplot(hcr_df, aes(x = SSB_ratio, y = F, color = Scenario)) +
 p_hcr
 ```
 
+# Risk-Calibrated Ftarget
+
+We calibrate a single $F_{target}$ (applied in the sloping HCR) so that the **combined** terminal risk across the low and high steepness scenarios satisfies $P(SSB < 0.2 B_0) = 0.05$. The combined risk is the average of the two scenario-specific probabilities.
+
+```{r ftarget-calibration}
+#| label: tbl-ftarget
+#| tbl-cap: "Risk-calibrated Ftarget targeting P(SSB < 0.2 B0) = 0.05 across low and high steepness scenarios."
+
+target_risk <- 0.05
+b0_frac <- 0.2
+n_sims_risk <- 200
+seed_low <- 2200
+seed_high <- 3200
+
+calc_terminal_b0_risk <- function(scenario, F_target, B0, n_sims, seed_base, b0_frac) {
+  params <- scenario$params
+  n_years <- params$n_years
+  below <- logical(n_sims)
+
+  for (i in 1:n_sims) {
+    sim <- run_simulation_hcr(
+      params,
+      F_target = F_target,
+      B0 = B0,
+      catch_cap = NULL,
+      seed = seed_base + i
+    )
+    below[i] <- sim$SSB[n_years] < (b0_frac * B0)
+  }
+
+  mean(below)
+}
+
+combined_b0_risk <- function(F_target) {
+  risk_low <- calc_terminal_b0_risk(
+    scenario_low,
+    F_target,
+    ref_low$SSB0,
+    n_sims_risk,
+    seed_low,
+    b0_frac
+  )
+  risk_high <- calc_terminal_b0_risk(
+    scenario_high,
+    F_target,
+    ref_high$SSB0,
+    n_sims_risk,
+    seed_high,
+    b0_frac
+  )
+
+  list(
+    risk_low = risk_low,
+    risk_high = risk_high,
+    risk_combined = mean(c(risk_low, risk_high))
+  )
+}
+
+F_grid <- seq(0.05, 1.0, by = 0.05)
+risk_grid <- lapply(F_grid, combined_b0_risk)
+risk_df <- data.frame(
+  F_target = F_grid,
+  Risk_combined = sapply(risk_grid, function(x) x$risk_combined),
+  Risk_low = sapply(risk_grid, function(x) x$risk_low),
+  Risk_high = sapply(risk_grid, function(x) x$risk_high)
+)
+
+risk_min <- min(risk_df$Risk_combined)
+risk_max <- max(risk_df$Risk_combined)
+
+if (target_risk <= risk_min) {
+  Ftarget <- risk_df$F_target[which.min(risk_df$Risk_combined)]
+} else if (target_risk >= risk_max) {
+  Ftarget <- risk_df$F_target[which.max(risk_df$Risk_combined)]
+} else {
+  ordered <- risk_df[order(risk_df$Risk_combined), ]
+  Ftarget <- approx(ordered$Risk_combined, ordered$F_target, xout = target_risk)$y
+}
+
+risk_at_target <- combined_b0_risk(Ftarget)
+
+ftarget_table <- data.frame(
+  Metric = c(
+    "Ftarget",
+    "Combined P(SSB < 0.2 B0)",
+    "Low steepness P(SSB < 0.2 B0)",
+    "High steepness P(SSB < 0.2 B0)"
+  ),
+  Value = c(
+    round(Ftarget, 3),
+    round(risk_at_target$risk_combined, 3),
+    round(risk_at_target$risk_low, 3),
+    round(risk_at_target$risk_high, 3)
+  )
+)
+
+knitr::kable(ftarget_table)
+```
+
 # Simulation Results
 
 We first compare single realizations at Fmsy (@fig-single-sim), then summarize means (@tbl-sim-summary) and variability across Monte Carlo runs (@fig-monte-carlo and @tbl-mc-stats).
@@ -406,7 +505,7 @@ knitr::kable(summary_df)
 
 ## Monte Carlo Simulations
 
-As shown in @fig-monte-carlo, stochastic variability across 100 runs is summarized with metrics reported in @tbl-mc-stats.
+As shown in @fig-monte-carlo, stochastic variability across 100 runs is summarized with metrics reported in @tbl-mc-stats. We then compare catch trajectories across three strategies: constant $F$ at $F_{MSY}$, the $F_{40\%}$ SPR HCR, and the risk-calibrated HCR based on $F_{target}$. The terminal-year SSB distributions for these strategies are shown in @fig-terminal-ssb-density.
 
 ```{r monte-carlo}
 #| label: fig-monte-carlo
@@ -486,12 +585,14 @@ p_mc
 
 ```{r catch-monte-carlo}
 #| label: fig-catch-monte-carlo
-#| fig-cap: "Ensemble of 100 simulations for each scenario showing catch variability under constant F and the FSPR HCR. Thin lines are individual simulations and thick solid lines are medians."
+#| fig-cap: "Ensemble of 100 simulations for each scenario showing catch variability under constant F, the FSPR HCR, and the risk-calibrated HCR. Thin lines are individual simulations and thick solid lines are medians."
 #| fig-height: 5
 #| fig-width: 10
 
 catch_low_hcr <- matrix(NA, n_years, n_sims)
 catch_high_hcr <- matrix(NA, n_years, n_sims)
+catch_low_ftarget <- matrix(NA, n_years, n_sims)
+catch_high_ftarget <- matrix(NA, n_years, n_sims)
 
 for (i in 1:n_sims) {
   sim_l_hcr <- run_simulation_hcr(
@@ -499,17 +600,33 @@ for (i in 1:n_sims) {
     F_target = F40_low,
     B0 = ref_low$SSB0,
     catch_cap = NULL,
-    seed = 2000 + i
+    seed = i
   )
   sim_h_hcr <- run_simulation_hcr(
     scenario_high$params,
     F_target = F40_high,
     B0 = ref_high$SSB0,
     catch_cap = NULL,
-    seed = 3000 + i
+    seed = i
+  )
+  sim_l_ftarget <- run_simulation_hcr(
+    scenario_low$params,
+    F_target = Ftarget,
+    B0 = ref_low$SSB0,
+    catch_cap = NULL,
+    seed = i
+  )
+  sim_h_ftarget <- run_simulation_hcr(
+    scenario_high$params,
+    F_target = Ftarget,
+    B0 = ref_high$SSB0,
+    catch_cap = NULL,
+    seed = i
   )
   catch_low_hcr[, i] <- sim_l_hcr$Catch
   catch_high_hcr[, i] <- sim_h_hcr$Catch
+  catch_low_ftarget[, i] <- sim_l_ftarget$Catch
+  catch_high_ftarget[, i] <- sim_h_ftarget$Catch
 }
 
 catch_low_df <- data.frame(
@@ -544,7 +661,30 @@ catch_high_hcr_df <- data.frame(
   Policy = "FSPR HCR"
 )
 
-catch_df <- rbind(catch_low_df, catch_high_df, catch_low_hcr_df, catch_high_hcr_df)
+catch_low_ftarget_df <- data.frame(
+  Year = rep(1:n_years, times = n_sims),
+  Sim = rep(1:n_sims, each = n_years),
+  Catch = as.vector(catch_low_ftarget) / 1e9,
+  Scenario = "h=0.6",
+  Policy = "Risk-calibrated HCR"
+)
+
+catch_high_ftarget_df <- data.frame(
+  Year = rep(1:n_years, times = n_sims),
+  Sim = rep(1:n_sims, each = n_years),
+  Catch = as.vector(catch_high_ftarget) / 1e9,
+  Scenario = "h=0.9",
+  Policy = "Risk-calibrated HCR"
+)
+
+catch_df <- rbind(
+  catch_low_df,
+  catch_high_df,
+  catch_low_hcr_df,
+  catch_high_hcr_df,
+  catch_low_ftarget_df,
+  catch_high_ftarget_df
+)
 
 median_catch_df <- rbind(
   data.frame(
@@ -570,10 +710,26 @@ median_catch_df <- rbind(
     Catch = apply(catch_high_hcr, 1, median) / 1e9,
     Scenario = "h=0.9",
     Policy = "FSPR HCR"
+  ),
+  data.frame(
+    Year = 1:n_years,
+    Catch = apply(catch_low_ftarget, 1, median) / 1e9,
+    Scenario = "h=0.6",
+    Policy = "Risk-calibrated HCR"
+  ),
+  data.frame(
+    Year = 1:n_years,
+    Catch = apply(catch_high_ftarget, 1, median) / 1e9,
+    Scenario = "h=0.9",
+    Policy = "Risk-calibrated HCR"
   )
 )
 
-policy_colors <- c("Const. F" = "#1F77B4", "FSPR HCR" = "#D95F02")
+policy_colors <- c(
+  "Const. F" = "#1F77B4",
+  "FSPR HCR" = "#D95F02",
+  "Risk-calibrated HCR" = "#2CA02C"
+)
 
 p_catch <- ggplot(
   catch_df,
@@ -593,6 +749,114 @@ p_catch <- ggplot(
 
 p_catch
 ```
+
+Across strategies in @fig-catch-monte-carlo, constant $F$ applies a fixed fishing rate, while the HCR strategies vary $F$ with biomass. This sets up a clear tradeoff: HCRs reduce fishing pressure in low-SSB periods, which can buffer against low-biomass risk, but they also lower catches in those years. Differences between the low- and high-steepness panels reflect the assumed productivity regime.
+
+```{r terminal-ssb-density}
+#| label: fig-terminal-ssb-density
+#| fig-cap: "Terminal-year SSB distributions by fishing strategy (constant F at Fmsy, FSPR HCR, risk-calibrated HCR, and catch-capped HCR)."
+#| fig-height: 5
+#| fig-width: 10
+
+terminal_const_low <- ssb_low[n_years, ] / 1e9
+terminal_const_high <- ssb_high[n_years, ] / 1e9
+
+catch_cap <- 1.45e9
+
+terminal_hcr_low <- numeric(n_sims)
+terminal_hcr_high <- numeric(n_sims)
+terminal_ftarget_low <- numeric(n_sims)
+terminal_ftarget_high <- numeric(n_sims)
+terminal_cap_low <- numeric(n_sims)
+terminal_cap_high <- numeric(n_sims)
+
+for (i in 1:n_sims) {
+  sim_l_hcr <- run_simulation_hcr(
+    scenario_low$params,
+    F_target = F40_low,
+    B0 = ref_low$SSB0,
+    catch_cap = NULL,
+    seed = i
+  )
+  sim_h_hcr <- run_simulation_hcr(
+    scenario_high$params,
+    F_target = F40_high,
+    B0 = ref_high$SSB0,
+    catch_cap = NULL,
+    seed = i
+  )
+  sim_l_ftarget <- run_simulation_hcr(
+    scenario_low$params,
+    F_target = Ftarget,
+    B0 = ref_low$SSB0,
+    catch_cap = NULL,
+    seed = i
+  )
+  sim_h_ftarget <- run_simulation_hcr(
+    scenario_high$params,
+    F_target = Ftarget,
+    B0 = ref_high$SSB0,
+    catch_cap = NULL,
+    seed = i
+  )
+  sim_l_cap <- run_simulation_hcr(
+    scenario_low$params,
+    F_target = F40_low,
+    B0 = ref_low$SSB0,
+    catch_cap = catch_cap,
+    seed = i
+  )
+  sim_h_cap <- run_simulation_hcr(
+    scenario_high$params,
+    F_target = F40_high,
+    B0 = ref_high$SSB0,
+    catch_cap = catch_cap,
+    seed = i
+  )
+
+  terminal_hcr_low[i] <- sim_l_hcr$SSB[n_years] / 1e9
+  terminal_hcr_high[i] <- sim_h_hcr$SSB[n_years] / 1e9
+  terminal_ftarget_low[i] <- sim_l_ftarget$SSB[n_years] / 1e9
+  terminal_ftarget_high[i] <- sim_h_ftarget$SSB[n_years] / 1e9
+  terminal_cap_low[i] <- sim_l_cap$SSB[n_years] / 1e9
+  terminal_cap_high[i] <- sim_h_cap$SSB[n_years] / 1e9
+}
+
+terminal_df <- rbind(
+  data.frame(Terminal_SSB = terminal_const_low, Scenario = "h=0.6", Policy = "Const. F"),
+  data.frame(Terminal_SSB = terminal_hcr_low, Scenario = "h=0.6", Policy = "FSPR HCR"),
+  data.frame(Terminal_SSB = terminal_ftarget_low, Scenario = "h=0.6", Policy = "Risk-calibrated HCR"),
+  data.frame(Terminal_SSB = terminal_cap_low, Scenario = "h=0.6", Policy = "FSPR HCR cap"),
+  data.frame(Terminal_SSB = terminal_const_high, Scenario = "h=0.9", Policy = "Const. F"),
+  data.frame(Terminal_SSB = terminal_hcr_high, Scenario = "h=0.9", Policy = "FSPR HCR"),
+  data.frame(Terminal_SSB = terminal_ftarget_high, Scenario = "h=0.9", Policy = "Risk-calibrated HCR"),
+  data.frame(Terminal_SSB = terminal_cap_high, Scenario = "h=0.9", Policy = "FSPR HCR cap")
+)
+
+terminal_df$Policy <- factor(
+  terminal_df$Policy,
+  levels = c("Const. F", "FSPR HCR", "Risk-calibrated HCR", "FSPR HCR cap")
+)
+
+policy_colors <- c(
+  "Const. F" = "#1F77B4",
+  "FSPR HCR" = "#D95F02",
+  "Risk-calibrated HCR" = "#2CA02C",
+  "FSPR HCR cap" = "#9467BD"
+)
+
+p_terminal <- ggplot(terminal_df, aes(x = Terminal_SSB, color = Policy, fill = Policy)) +
+  geom_density(alpha = 0.25, size = 1) +
+  facet_wrap(~ Scenario, ncol = 2) +
+  scale_color_manual(values = policy_colors) +
+  scale_fill_manual(values = policy_colors) +
+  labs(x = "Terminal SSB (Mt)", y = "Density", title = "Terminal-year SSB distributions") +
+  ggthemes::theme_few()
+
+p_terminal
+```
+
+@fig-terminal-ssb-density summarizes terminal-year risk across strategies. A right-shifted density indicates higher terminal SSB, while a heavier left tail indicates greater risk of ending at low biomass. The risk-calibrated HCR is explicitly tuned to limit the combined probability of $SSB < 0.2 B_0$, and the catch-capped HCR further constrains fishing in high-catch years. The relative tail behavior across the four strategies highlights the precautionary differences under each steepness scenario.
 
 ```{r mc-stats}
 #| label: tbl-mc-stats
@@ -616,11 +880,11 @@ knitr::kable(mc_stats)
 
 # Fishing Mortality Sensitivity
 
-To stress-test harvest rates, we run each scenario at constant fishing mortality values spanning 0.5-1.5 x $F_{MSY}$. @tbl-f-sensitivity lists the constant-F results alongside the FSPR HCR outcomes (with and without the 1.45 Mt cap), and @fig-f-sensitivity visualizes the tradeoffs.
+To stress-test harvest rates, we run each scenario at constant fishing mortality values spanning 0.5-1.5 x $F_{MSY}$. @tbl-f-sensitivity lists the constant-F results alongside the FSPR HCR, risk-calibrated HCR, and the 1.45 Mt catch cap, and @fig-f-sensitivity visualizes the tradeoffs.
 
 ```{r f-sensitivity-table}
 #| label: tbl-f-sensitivity
-#| tbl-cap: "Performance across constant F multipliers and FSPR HCR policies (100 simulations per level)."
+#| tbl-cap: "Performance across constant F multipliers and HCR policies (FSPR, risk-calibrated, and catch-capped; 100 simulations per level)."
 
 F_multipliers <- c(0.5, 0.75, 1.0, 1.25, 1.5)
 n_sims_F <- 100
@@ -671,13 +935,15 @@ run_hcr_summary_table <- function(scenario, F_target, B0, n_sims, seed_base, cat
 }
 
 catch_cap <- 1.45e9
+seed_base_low <- 800
+seed_base_high <- 900
 
 hcr_low <- run_hcr_summary_table(
   scenario_low,
   F40_low,
   ref_low$SSB0,
   n_sims_F,
-  seed_base = 800,
+  seed_base = seed_base_low,
   catch_cap = NULL,
   policy_label = "FSPR HCR"
 )
@@ -686,16 +952,34 @@ hcr_high <- run_hcr_summary_table(
   F40_high,
   ref_high$SSB0,
   n_sims_F,
-  seed_base = 900,
+  seed_base = seed_base_high,
   catch_cap = NULL,
   policy_label = "FSPR HCR"
+)
+hcr_low_ftarget <- run_hcr_summary_table(
+  scenario_low,
+  Ftarget,
+  ref_low$SSB0,
+  n_sims_F,
+  seed_base = seed_base_low,
+  catch_cap = NULL,
+  policy_label = "Risk-calibrated HCR"
+)
+hcr_high_ftarget <- run_hcr_summary_table(
+  scenario_high,
+  Ftarget,
+  ref_high$SSB0,
+  n_sims_F,
+  seed_base = seed_base_high,
+  catch_cap = NULL,
+  policy_label = "Risk-calibrated HCR"
 )
 hcr_low_cap <- run_hcr_summary_table(
   scenario_low,
   F40_low,
   ref_low$SSB0,
   n_sims_F,
-  seed_base = 1000,
+  seed_base = seed_base_low,
   catch_cap = catch_cap,
   policy_label = "FSPR HCR cap"
 )
@@ -704,12 +988,12 @@ hcr_high_cap <- run_hcr_summary_table(
   F40_high,
   ref_high$SSB0,
   n_sims_F,
-  seed_base = 1100,
+  seed_base = seed_base_high,
   catch_cap = catch_cap,
   policy_label = "FSPR HCR cap"
 )
 
-hcr_summary <- rbind(hcr_low, hcr_high, hcr_low_cap, hcr_high_cap)
+hcr_summary <- rbind(hcr_low, hcr_high, hcr_low_ftarget, hcr_high_ftarget, hcr_low_cap, hcr_high_cap)
 f_summary_all <- rbind(f_summary, hcr_summary)
 
 f_table <- data.frame(
@@ -729,7 +1013,7 @@ knitr::kable(f_table)
 
 ```{r f-sensitivity-plot}
 #| label: fig-f-sensitivity
-#| fig-cap: "Tradeoffs across F multipliers: mean catch and terminal SSB. Triangle points show the FSPR HCR outcome and square points show the catch-capped HCR at the mean realized F/Fmsy."
+#| fig-cap: "Tradeoffs across F multipliers: mean catch and terminal SSB. Triangle points show the FSPR HCR outcome, diamonds show the risk-calibrated HCR, and square points show the catch-capped HCR at the mean realized F/Fmsy."
 #| fig-height: 5
 #| fig-width: 9
 
@@ -742,6 +1026,8 @@ plot_data$Scenario_plot <- ifelse(
 )
 
 catch_cap <- 1.45e9
+seed_base_low <- 800
+seed_base_high <- 900
 
 run_hcr_summary <- function(scenario, F_target, B0, n_sims, seed_base, catch_cap, policy_label) {
   params <- scenario$params
@@ -782,7 +1068,7 @@ hcr_low <- run_hcr_summary(
   F40_low,
   ref_low$SSB0,
   n_sims_F,
-  seed_base = 800,
+  seed_base = seed_base_low,
   catch_cap = NULL,
   policy_label = "FSPR HCR"
 )
@@ -791,16 +1077,34 @@ hcr_high <- run_hcr_summary(
   F40_high,
   ref_high$SSB0,
   n_sims_F,
-  seed_base = 900,
+  seed_base = seed_base_high,
   catch_cap = NULL,
   policy_label = "FSPR HCR"
+)
+hcr_low_ftarget <- run_hcr_summary(
+  scenario_low,
+  Ftarget,
+  ref_low$SSB0,
+  n_sims_F,
+  seed_base = seed_base_low,
+  catch_cap = NULL,
+  policy_label = "Risk-calibrated HCR"
+)
+hcr_high_ftarget <- run_hcr_summary(
+  scenario_high,
+  Ftarget,
+  ref_high$SSB0,
+  n_sims_F,
+  seed_base = seed_base_high,
+  catch_cap = NULL,
+  policy_label = "Risk-calibrated HCR"
 )
 hcr_low_cap <- run_hcr_summary(
   scenario_low,
   F40_low,
   ref_low$SSB0,
   n_sims_F,
-  seed_base = 1000,
+  seed_base = seed_base_low,
   catch_cap = catch_cap,
   policy_label = "FSPR HCR cap"
 )
@@ -809,11 +1113,11 @@ hcr_high_cap <- run_hcr_summary(
   F40_high,
   ref_high$SSB0,
   n_sims_F,
-  seed_base = 1100,
+  seed_base = seed_base_high,
   catch_cap = catch_cap,
   policy_label = "FSPR HCR cap"
 )
-hcr_summary <- rbind(hcr_low, hcr_high, hcr_low_cap, hcr_high_cap)
+hcr_summary <- rbind(hcr_low, hcr_high, hcr_low_ftarget, hcr_high_ftarget, hcr_low_cap, hcr_high_cap)
 hcr_summary$Scenario_plot <- ifelse(
   hcr_summary$Scenario == scenario_low$name,
   "h=0.6",
@@ -888,7 +1192,7 @@ p_f <- ggplot() +
   ) +
   facet_wrap(~ Metric, scales = "free_y", ncol = 2) +
   scale_color_manual(values = scenario_colors) +
-  scale_shape_manual(values = c("FSPR HCR" = 17, "FSPR HCR cap" = 15)) +
+  scale_shape_manual(values = c("FSPR HCR" = 17, "Risk-calibrated HCR" = 18, "FSPR HCR cap" = 15)) +
   labs(x = "F multiplier (relative to Fmsy)", y = NULL, title = "F sensitivity tradeoffs") +
   ggthemes::theme_few()
 
@@ -897,12 +1201,14 @@ p_f
 
 ```{r f-sensitivity-points}
 #| label: fig-f-sensitivity-points
-#| fig-cap: "Individual simulation outcomes at F multiplier = 1.0 and under the FSPR HCR (with and without a 1.45 Mt catch cap). Points are single Monte Carlo draws with x = mean catch and y = terminal SSB/Bmsy."
+#| fig-cap: "Individual simulation outcomes at F multiplier = 1.0 and under the FSPR HCR, risk-calibrated HCR, and the 1.45 Mt catch cap. Points are single Monte Carlo draws with x = mean catch and y = terminal SSB/Bmsy."
 #| fig-height: 5
 #| fig-width: 9
 
 n_sims_points <- n_sims_F
 catch_cap <- 1.45e9
+seed_base_low <- 1200
+seed_base_high <- 1300
 
 sim_constant_points <- function(scenario, f_multiplier, seed_base, n_sims) {
   params <- scenario$params
@@ -958,13 +1264,13 @@ sim_hcr_points <- function(scenario, F_target, B0, seed_base, n_sims, catch_cap,
   )
 }
 
-const_low_pts <- sim_constant_points(scenario_low, 1.0, seed_base = 1200, n_sims_points)
-const_high_pts <- sim_constant_points(scenario_high, 1.0, seed_base = 1300, n_sims_points)
+const_low_pts <- sim_constant_points(scenario_low, 1.0, seed_base = seed_base_low, n_sims_points)
+const_high_pts <- sim_constant_points(scenario_high, 1.0, seed_base = seed_base_high, n_sims_points)
 hcr_low_pts <- sim_hcr_points(
   scenario_low,
   F40_low,
   ref_low$SSB0,
-  seed_base = 1400,
+  seed_base = seed_base_low,
   n_sims_points,
   catch_cap = NULL,
   policy_label = "FSPR HCR"
@@ -973,16 +1279,34 @@ hcr_high_pts <- sim_hcr_points(
   scenario_high,
   F40_high,
   ref_high$SSB0,
-  seed_base = 1500,
+  seed_base = seed_base_high,
   n_sims_points,
   catch_cap = NULL,
   policy_label = "FSPR HCR"
+)
+hcr_low_ftarget_pts <- sim_hcr_points(
+  scenario_low,
+  Ftarget,
+  ref_low$SSB0,
+  seed_base = seed_base_low,
+  n_sims_points,
+  catch_cap = NULL,
+  policy_label = "Risk-calibrated HCR"
+)
+hcr_high_ftarget_pts <- sim_hcr_points(
+  scenario_high,
+  Ftarget,
+  ref_high$SSB0,
+  seed_base = seed_base_high,
+  n_sims_points,
+  catch_cap = NULL,
+  policy_label = "Risk-calibrated HCR"
 )
 hcr_low_cap_pts <- sim_hcr_points(
   scenario_low,
   F40_low,
   ref_low$SSB0,
-  seed_base = 1600,
+  seed_base = seed_base_low,
   n_sims_points,
   catch_cap = catch_cap,
   policy_label = "FSPR HCR cap"
@@ -991,13 +1315,22 @@ hcr_high_cap_pts <- sim_hcr_points(
   scenario_high,
   F40_high,
   ref_high$SSB0,
-  seed_base = 1700,
+  seed_base = seed_base_high,
   n_sims_points,
   catch_cap = catch_cap,
   policy_label = "FSPR HCR cap"
 )
 
-points_df <- rbind(const_low_pts, const_high_pts, hcr_low_pts, hcr_high_pts, hcr_low_cap_pts, hcr_high_cap_pts)
+points_df <- rbind(
+  const_low_pts,
+  const_high_pts,
+  hcr_low_pts,
+  hcr_high_pts,
+  hcr_low_ftarget_pts,
+  hcr_high_ftarget_pts,
+  hcr_low_cap_pts,
+  hcr_high_cap_pts
+)
 points_df$Scenario_plot <- ifelse(
   points_df$Scenario == scenario_low$name,
   "h=0.6",
@@ -1015,7 +1348,7 @@ plot_points <- data.frame(
   Terminal_SSB_Bmsy = points_df$Terminal_SSB / bmsy_lookup,
   Scenario = points_df$Scenario_plot,
   Policy = points_df$Policy,
-  PolicyGroup = ifelse(points_df$Policy == "Const. F", "Const. F", "SPR-based HCR")
+  PolicyGroup = ifelse(points_df$Policy == "Const. F", "Const. F", "HCR")
 )
 
 scenario_colors <- c("h=0.6" = "blue", "h=0.9" = "red")
@@ -1033,8 +1366,8 @@ p_fp <- ggplot(plot_points, aes(x = Catch_Mt, y = Terminal_SSB_Bmsy, color = Sce
   ) +
   expand_limits(y = 0) +
   scale_color_manual(values = scenario_colors) +
-  scale_linetype_manual(values = c("Const. F" = "solid", "SPR-based HCR" = "dashed")) +
-  scale_shape_manual(values = c("Const. F" = 16, "FSPR HCR" = 17, "FSPR HCR cap" = 15)) +
+  scale_linetype_manual(values = c("Const. F" = "solid", "HCR" = "dashed")) +
+  scale_shape_manual(values = c("Const. F" = 16, "FSPR HCR" = 17, "Risk-calibrated HCR" = 18, "FSPR HCR cap" = 15)) +
   labs(x = "Mean Catch (Mt)", y = "Terminal SSB / Bmsy", title = "F sensitivity: individual simulation draws") +
   ggthemes::theme_few()
 
@@ -1043,11 +1376,13 @@ p_fp
 
 ```{r catch-variability}
 #| label: fig-catch-variability
-#| fig-cap: "Average annual catch variability (CV) over the last 10 years versus mean catch over the last 10 years."
+#| fig-cap: "Average annual catch variability (CV) over the last 10 years versus mean catch over the last 10 years across constant F, FSPR HCR, risk-calibrated HCR, and catch-capped HCR strategies."
 #| fig-height: 5
 #| fig-width: 9
 
 catch_cap <- 1.45e9
+seed_base_low <- 1600
+seed_base_high <- 1700
 
 last10_stats_constant <- function(scenario, f_multiplier, seed_base, n_sims) {
   params <- scenario$params
@@ -1102,13 +1437,13 @@ last10_stats_hcr <- function(scenario, F_target, B0, seed_base, n_sims, catch_ca
   )
 }
 
-const_low_var <- last10_stats_constant(scenario_low, 1.0, seed_base = 1600, n_sims_points)
-const_high_var <- last10_stats_constant(scenario_high, 1.0, seed_base = 1700, n_sims_points)
+const_low_var <- last10_stats_constant(scenario_low, 1.0, seed_base = seed_base_low, n_sims_points)
+const_high_var <- last10_stats_constant(scenario_high, 1.0, seed_base = seed_base_high, n_sims_points)
 hcr_low_var <- last10_stats_hcr(
   scenario_low,
   F40_low,
   ref_low$SSB0,
-  seed_base = 1800,
+  seed_base = seed_base_low,
   n_sims_points,
   catch_cap = NULL,
   policy_label = "FSPR HCR"
@@ -1117,16 +1452,34 @@ hcr_high_var <- last10_stats_hcr(
   scenario_high,
   F40_high,
   ref_high$SSB0,
-  seed_base = 1900,
+  seed_base = seed_base_high,
   n_sims_points,
   catch_cap = NULL,
   policy_label = "FSPR HCR"
+)
+hcr_low_ftarget_var <- last10_stats_hcr(
+  scenario_low,
+  Ftarget,
+  ref_low$SSB0,
+  seed_base = seed_base_low,
+  n_sims_points,
+  catch_cap = NULL,
+  policy_label = "Risk-calibrated HCR"
+)
+hcr_high_ftarget_var <- last10_stats_hcr(
+  scenario_high,
+  Ftarget,
+  ref_high$SSB0,
+  seed_base = seed_base_high,
+  n_sims_points,
+  catch_cap = NULL,
+  policy_label = "Risk-calibrated HCR"
 )
 hcr_low_cap_var <- last10_stats_hcr(
   scenario_low,
   F40_low,
   ref_low$SSB0,
-  seed_base = 2000,
+  seed_base = seed_base_low,
   n_sims_points,
   catch_cap = catch_cap,
   policy_label = "FSPR HCR cap"
@@ -1135,13 +1488,22 @@ hcr_high_cap_var <- last10_stats_hcr(
   scenario_high,
   F40_high,
   ref_high$SSB0,
-  seed_base = 2100,
+  seed_base = seed_base_high,
   n_sims_points,
   catch_cap = catch_cap,
   policy_label = "FSPR HCR cap"
 )
 
-var_df <- rbind(const_low_var, const_high_var, hcr_low_var, hcr_high_var, hcr_low_cap_var, hcr_high_cap_var)
+var_df <- rbind(
+  const_low_var,
+  const_high_var,
+  hcr_low_var,
+  hcr_high_var,
+  hcr_low_ftarget_var,
+  hcr_high_ftarget_var,
+  hcr_low_cap_var,
+  hcr_high_cap_var
+)
 var_df$Scenario_plot <- ifelse(
   var_df$Scenario == scenario_low$name,
   "h=0.6",
@@ -1162,7 +1524,7 @@ p_var <- ggplot(var_summary, aes(x = Mean_Catch_Mt, y = Catch_CV, color = Scenar
   geom_point(size = 5) +
   expand_limits(y = 0) +
   scale_color_manual(values = scenario_colors) +
-  scale_shape_manual(values = c("Const. F" = 16, "FSPR HCR" = 17, "FSPR HCR cap" = 15)) +
+  scale_shape_manual(values = c("Const. F" = 16, "FSPR HCR" = 17, "Risk-calibrated HCR" = 18, "FSPR HCR cap" = 15)) +
   labs(x = "Mean Catch (Mt, last 10 years)", y = "Catch CV (last 10 years)", title = "Catch variability vs mean catch") +
   ggthemes::theme_few()
 
